@@ -26,7 +26,7 @@ find_package_handle_standard_args(Poppler
 if(POPPLER_FOUND)
   set(POPPLER_INCLUDE_DIRS ${POPPLER_INCLUDE_DIR})
   # A static Poppler needs the libraries it was built against linked in too.
-  if(APPLE AND POPPLER_CPP_LIBRARY MATCHES "\\.a$")
+  if((APPLE OR WIN32) AND POPPLER_CPP_LIBRARY MATCHES "\\.(a|lib)$")
     find_package(Freetype REQUIRED)
     find_package(ZLIB REQUIRED)
     find_package(OpenJPEG REQUIRED)
