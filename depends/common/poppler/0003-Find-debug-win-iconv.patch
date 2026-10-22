@@ -1,0 +1,25 @@
+--- /dev/null
++++ b/cmake/modules/FindIconv.cmake
+@@ -0,0 +1,22 @@
++# CMake's FindIconv does not recognize win-iconv's Debug library.
++if(MSVC AND NOT Iconv_LIBRARY)
++  find_library(Iconv_LIBRARY_RELEASE NAMES iconv libiconv)
++  find_library(Iconv_LIBRARY_DEBUG NAMES iconvd libiconvd)
++  if(Iconv_LIBRARY_RELEASE)
++    set(Iconv_LIBRARY "${Iconv_LIBRARY_RELEASE}")
++  else()
++    set(Iconv_LIBRARY "${Iconv_LIBRARY_DEBUG}")
++  endif()
++  set(_Iconv_SELECT_CONFIG TRUE)
++endif()
++
++include("${CMAKE_ROOT}/Modules/FindIconv.cmake")
++
++if(_Iconv_SELECT_CONFIG AND Iconv_FOUND)
++  include(SelectLibraryConfigurations)
++  select_library_configurations(Iconv)
++
++  set_property(TARGET Iconv::Iconv PROPERTY INTERFACE_LINK_LIBRARIES "")
++  target_link_libraries(Iconv::Iconv INTERFACE ${Iconv_LIBRARIES})
++endif()
++unset(_Iconv_SELECT_CONFIG)

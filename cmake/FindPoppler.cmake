@@ -25,8 +25,17 @@ find_package_handle_standard_args(Poppler
 
 if(POPPLER_FOUND)
   set(POPPLER_INCLUDE_DIRS ${POPPLER_INCLUDE_DIR})
+  set(_poppler_windows_static FALSE)
+  if(WIN32 AND EXISTS "${POPPLER_INCLUDE_DIR}/poppler_cpp_export.h")
+    # Poppler's generated export header has empty exports only for static builds.
+    file(STRINGS "${POPPLER_INCLUDE_DIR}/poppler_cpp_export.h" _poppler_exports
+         REGEX "^[ \t]*#[ \t]*define[ \t]+POPPLER_CPP_EXPORT([ \t]+.*)?$")
+    if(_poppler_exports AND NOT _poppler_exports MATCHES "POPPLER_CPP_EXPORT[ \t]+[^ \t;]")
+      set(_poppler_windows_static TRUE)
+    endif()
+  endif()
   # A static Poppler needs the libraries it was built against linked in too.
-  if(APPLE AND POPPLER_CPP_LIBRARY MATCHES "\\.a$")
+  if((APPLE AND POPPLER_CPP_LIBRARY MATCHES "\\.(a|lib)$") OR _poppler_windows_static)
     find_package(Freetype REQUIRED)
     find_package(ZLIB REQUIRED)
     find_package(OpenJPEG REQUIRED)
