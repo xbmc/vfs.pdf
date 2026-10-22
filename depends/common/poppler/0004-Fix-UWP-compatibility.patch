@@ -1,0 +1,196 @@
+diff --git a/config.h.cmake b/config.h.cmake
+index 430b001..d3f8aef 100644
+--- a/config.h.cmake
++++ b/config.h.cmake
+@@ -116,6 +116,15 @@
+ #define strcasecmp _stricmp
+ #endif
+
++#if defined(_MSC_VER)
++#include <stdio.h>
++#include <string.h>
++#define fileno _fileno
++#define fdopen _fdopen
++#define strdup _strdup
++#define stricmp _stricmp
++#endif
++
+ /* Number of bits in a file offset, on hosts where this is settable. */
+ #cmakedefine _FILE_OFFSET_BITS @_FILE_OFFSET_BITS@
+
+diff --git a/goo/GooString.cc b/goo/GooString.cc
+index 91783bb..92cc1c8 100644
+--- a/goo/GooString.cc
++++ b/goo/GooString.cc
+@@ -449,7 +449,9 @@ GooString *GooString::appendfv(const char *fmt, va_list argList)
+                     width = arg.i;
+                     break;
+                 case fmtInvalidFormat:
++                default:
+                     assert(false);
++                    std::abort();
+                 }
+
+                 // append the formatted arg, handling width and alignment
+diff --git a/goo/gfile.cc b/goo/gfile.cc
+index aa4676a..97685ff 100644
+--- a/goo/gfile.cc
++++ b/goo/gfile.cc
+@@ -186,7 +186,6 @@ int openFileDescriptor(const char *path, int flags)
+ FILE *openFile(const char *path, const char *mode)
+ {
+ #ifdef _WIN32
+-    OSVERSIONINFO version;
+     wchar_t wPath[_MAX_PATH + 1];
+     char nPath[_MAX_PATH + 1];
+     wchar_t wMode[8];
+@@ -194,9 +193,15 @@ FILE *openFile(const char *path, const char *mode)
+     size_t i;
+
+     // NB: _wfopen is only available in NT
++#if defined(WINAPI_FAMILY) && (WINAPI_FAMILY == WINAPI_FAMILY_APP)
++    const bool isWindowsNT = true;
++#else
++    OSVERSIONINFO version;
+     version.dwOSVersionInfoSize = sizeof(version);
+     GetVersionEx(&version);
+-    if (version.dwPlatformId == VER_PLATFORM_WIN32_NT) {
++    const bool isWindowsNT = version.dwPlatformId == VER_PLATFORM_WIN32_NT;
++#endif
++    if (isWindowsNT) {
+         for (p = path, i = 0; *p && i < _MAX_PATH; ++i) {
+             if ((p[0] & 0xe0) == 0xc0 && p[1] && (p[1] & 0xc0) == 0x80) {
+                 wPath[i] = (wchar_t)(((p[0] & 0x1f) << 6) | (p[1] & 0x3f));
+@@ -363,14 +368,33 @@ Goffset GooFile::size() const
+
+ std::unique_ptr<GooFile> GooFile::open(const std::string &fileName)
+ {
++#if defined(WINAPI_FAMILY) && (WINAPI_FAMILY == WINAPI_FAMILY_APP)
++    const int length = MultiByteToWideChar(CP_ACP, 0, fileName.c_str(), -1, nullptr, 0);
++    if (length == 0) {
++        return {};
++    }
++    std::wstring wideFileName(length, L'\0');
++    if (MultiByteToWideChar(CP_ACP, 0, fileName.c_str(), -1, wideFileName.data(), length) == 0) {
++        return {};
++    }
++    return GooFile::open(wideFileName.c_str());
++#else
+     HANDLE handle = CreateFileA(fileName.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+
+     return handle == INVALID_HANDLE_VALUE ? std::unique_ptr<GooFile>() : std::unique_ptr<GooFile>(new GooFile(handle));
++#endif
+ }
+
+ std::unique_ptr<GooFile> GooFile::open(const wchar_t *fileName)
+ {
++#if defined(WINAPI_FAMILY) && (WINAPI_FAMILY == WINAPI_FAMILY_APP)
++    CREATEFILE2_EXTENDED_PARAMETERS parameters = {};
++    parameters.dwSize = sizeof(parameters);
++    parameters.dwFileAttributes = FILE_ATTRIBUTE_NORMAL;
++    HANDLE handle = CreateFile2(fileName, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, OPEN_EXISTING, &parameters);
++#else
+     HANDLE handle = CreateFileW(fileName, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
++#endif
+
+     return handle == INVALID_HANDLE_VALUE ? std::unique_ptr<GooFile>() : std::unique_ptr<GooFile>(new GooFile(handle));
+ }
+diff --git a/poppler/Gfx.cc b/poppler/Gfx.cc
+index 2436159..25893b8 100644
+--- a/poppler/Gfx.cc
++++ b/poppler/Gfx.cc
+@@ -4173,7 +4173,7 @@ void Gfx::opXObject(Object args[], int /*numArgs*/)
+
+ void Gfx::doImage(Object *ref, Stream *str, bool inlineImg)
+ {
+-    Dict *dict, *maskDict;
++    Dict *dict, *maskDict = nullptr;
+     int width, height;
+     int bits, maskBits;
+     bool interpolate;
+diff --git a/poppler/GlobalParamsWin.cc b/poppler/GlobalParamsWin.cc
+index e8a79a5..4a4f1cb 100644
+--- a/poppler/GlobalParamsWin.cc
++++ b/poppler/GlobalParamsWin.cc
+@@ -151,6 +151,14 @@ static const struct
+
+ static std::string GetWindowsFontDir()
+ {
++#if defined(WINAPI_FAMILY) && (WINAPI_FAMILY == WINAPI_FAMILY_APP)
++    char winFontDir[MAX_PATH];
++    const UINT length = GetSystemWindowsDirectoryA(winFontDir, MAX_PATH);
++    if (length > 0 && length < MAX_PATH) {
++        return std::string(winFontDir, length) + "\\fonts";
++    }
++    return {};
++#else
+     char winFontDir[MAX_PATH];
+     winFontDir[0] = '\0';
+
+@@ -165,6 +173,7 @@ static std::string GetWindowsFontDir()
+     }
+
+     return {};
++#endif
+ }
+
+ static bool FileExists(const char *path)
+@@ -179,7 +188,6 @@ static bool FileExists(const char *path)
+
+ void SysFontList::scanWindowsFonts(const std::string &winFontDir)
+ {
+-    OSVERSIONINFO version;
+     const char *path;
+     DWORD idx, valNameLen, dataLen, type;
+     HKEY regKey;
+@@ -188,6 +196,10 @@ void SysFontList::scanWindowsFonts(const std::string &winFontDir)
+     char *p0, *p1;
+     GooString *fontPath;
+
++#if defined(WINAPI_FAMILY) && (WINAPI_FAMILY == WINAPI_FAMILY_APP)
++    path = "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts\\";
++#else
++    OSVERSIONINFO version;
+     version.dwOSVersionInfoSize = sizeof(version);
+     GetVersionEx(&version);
+     if (version.dwPlatformId == VER_PLATFORM_WIN32_NT) {
+@@ -195,6 +207,7 @@ void SysFontList::scanWindowsFonts(const std::string &winFontDir)
+     } else {
+         path = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Fonts\\";
+     }
++#endif
+     if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, path, 0, KEY_QUERY_VALUE | KEY_ENUMERATE_SUB_KEYS, &regKey) == ERROR_SUCCESS) {
+         idx = 0;
+         while (1) {
+diff --git a/poppler/PDFDoc.cc b/poppler/PDFDoc.cc
+index 127183b..f4023a3 100644
+--- a/poppler/PDFDoc.cc
++++ b/poppler/PDFDoc.cc
+@@ -171,8 +171,6 @@ PDFDoc::PDFDoc(std::unique_ptr<GooString> &&fileNameA, const std::optional<GooSt
+ #ifdef _WIN32
+ PDFDoc::PDFDoc(wchar_t *fileNameA, int fileNameLen, const std::optional<GooString> &ownerPassword, const std::optional<GooString> &userPassword, const std::function<void()> &xrefReconstructedCallback)
+ {
+-    OSVERSIONINFO version;
+-
+     // save both Unicode and 8-bit copies of the file name
+     std::unique_ptr<GooString> fileNameG = std::make_unique<GooString>();
+     for (int i = 0; i < fileNameLen; ++i) {
+@@ -183,6 +181,10 @@ PDFDoc::PDFDoc(wchar_t *fileNameA, int fileNameLen, const std::optional<GooStrin
+
+     // try to open file
+     // NB: _wfopen is only available in NT
++#if defined(WINAPI_FAMILY) && (WINAPI_FAMILY == WINAPI_FAMILY_APP)
++    file = GooFile::open(fileNameU.c_str());
++#else
++    OSVERSIONINFO version;
+     version.dwOSVersionInfoSize = sizeof(version);
+     GetVersionEx(&version);
+     if (version.dwPlatformId == VER_PLATFORM_WIN32_NT) {
+@@ -190,6 +192,7 @@ PDFDoc::PDFDoc(wchar_t *fileNameA, int fileNameLen, const std::optional<GooStrin
+     } else {
+         file = GooFile::open(fileName->toStr());
+     }
++#endif
+     if (!file) {
+         error(errIO, -1, "Couldn't open file '{0:t}'", fileName.get());
+         errCode = errOpenFile;
