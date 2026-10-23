@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <ctime>
 #include <kodi/Filesystem.h>
 #include <kodi/General.h>
 #include <kodi/addon-instance/VFS.h>
@@ -85,10 +86,12 @@ int PageIndex(const std::string& filename)
 class CCache
 {
 public:
-  std::shared_ptr<CPdfPages> Document(const std::string& path)
+  std::shared_ptr<CPdfPages> Document(const std::string& path, time_t* modificationTime = nullptr)
   {
     kodi::vfs::FileStatus status;
     const bool known = kodi::vfs::StatFile(path, status);
+    if (modificationTime)
+      *modificationTime = known ? status.GetModificationTime() : 0;
     const std::string version =
         known ? std::to_string(status.GetSize()) + ":" +
                     std::to_string(static_cast<long long>(status.GetModificationTime()))
@@ -223,13 +226,14 @@ void ListPages(const std::string& path,
                const std::string& root,
                std::vector<kodi::vfs::CDirEntry>& items)
 {
-  std::shared_ptr<CPdfPages> pages = Cache().Document(path);
+  time_t modificationTime{0};
+  std::shared_ptr<CPdfPages> pages = Cache().Document(path, &modificationTime);
   if (!pages)
     return;
   for (unsigned int page = 0; page < pages->PageCount(); page++)
   {
     const std::string name = PageName(page);
-    items.emplace_back(name, root + name, false);
+    items.emplace_back(name, root + name, false, -1, modificationTime);
   }
 }
 } // namespace
