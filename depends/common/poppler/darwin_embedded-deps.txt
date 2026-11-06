@@ -1,3 +1,5 @@
 freetype
 libjpeg-turbo
+libpng
 openjpeg
+zlib

@@ -37,6 +37,7 @@ if(POPPLER_FOUND)
   # A static Poppler needs the libraries it was built against linked in too.
   if((APPLE AND POPPLER_CPP_LIBRARY MATCHES "\\.(a|lib)$") OR _poppler_windows_static)
     find_package(Freetype REQUIRED)
+    find_package(PNG REQUIRED)
     find_package(ZLIB REQUIRED)
     find_package(OpenJPEG REQUIRED)
     find_package(Iconv REQUIRED)
@@ -45,6 +46,7 @@ if(POPPLER_FOUND)
         ${POPPLER_CPP_LIBRARY}
         ${POPPLER_CORE_LIBRARY}
         Freetype::Freetype
+        PNG::PNG
         ZLIB::ZLIB
         ${OPENJPEG_LIBRARIES}
         Iconv::Iconv)
