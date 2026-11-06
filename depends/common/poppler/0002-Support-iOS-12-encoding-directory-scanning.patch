@@ -1,17 +1,17 @@
 --- a/poppler/GlobalParams.h
 +++ b/poppler/GlobalParams.h
-@@ -51,7 +51,6 @@
- #include <mutex>
+@@ -52,7 +52,6 @@
  #include <optional>
+ #include <utility>
  #include <vector>
 -#include <filesystem>
 
  class GooString;
  class NameToCharCode;
-@@ -169,7 +168,7 @@
-     static bool parseYesNo2(const char *token, bool *flag);
+@@ -171,7 +170,7 @@
 
  private:
+     static std::string appendToPath(const std::string &path, const std::string &fileName);
 -    void parseNameToUnicode(const std::filesystem::path &name);
 +    void parseNameToUnicode(const std::string &name);
 
@@ -19,7 +19,7 @@
      void addCIDToUnicode(std::string &&collection, std::string &&fileName);
 --- a/poppler/GlobalParams.cc
 +++ b/poppler/GlobalParams.cc
-@@ -61,7 +61,12 @@
+@@ -62,7 +62,12 @@
  #include <algorithm>
  #include <cstring>
  #include <cstdio>
@@ -30,10 +30,73 @@
 +#else
 +#    include <filesystem>
 +#endif
+ #include <utility>
  #ifdef _WIN32
  #    include <shlobj.h>
- #    include <mbstring.h>
-@@ -461,10 +466,40 @@
+@@ -394,6 +399,54 @@
+
+ std::string GlobalParams::appendToPath(const std::string &path, const std::string &fileName)
+ {
++#ifdef __APPLE__
++    // Normalize POSIX paths without std::filesystem, which requires iOS 13.
++    const auto normalize = [](const std::string &value) {
++        std::vector<std::string> parts;
++        const bool absolute = !value.empty() && value.front() == '/';
++        if (absolute) {
++            parts.emplace_back("/");
++        }
++        size_t start = 0;
++        std::string part;
++        while (start <= value.size()) {
++            const size_t end = value.find('/', start);
++            part = value.substr(start, end == std::string::npos ? end : end - start);
++            if (part == "..") {
++                if (!parts.empty() && parts.back() != "/" && parts.back() != "..") {
++                    parts.pop_back();
++                } else if (!absolute) {
++                    parts.push_back(part);
++                }
++            } else if (!part.empty() && part != ".") {
++                parts.push_back(part);
++            }
++            if (end == std::string::npos) {
++                break;
++            }
++            start = end + 1;
++        }
++        if (parts.empty() && !value.empty()) {
++            parts.emplace_back(".");
++        } else if (!parts.empty() && parts.back() != "/" && parts.back() != ".." && (part.empty() || part == "." || part == "..")) {
++            parts.emplace_back("");
++        }
++        return parts;
++    };
++    const auto basePath = normalize(path);
++    const auto filePath = normalize(!fileName.empty() && fileName.front() == '/' ? fileName : path + (path.empty() || path.back() == '/' ? "" : "/") + fileName);
++    if (filePath.size() < basePath.size() || !std::equal(basePath.begin(), basePath.end(), filePath.begin())) {
++        return {};
++    }
++    std::string result;
++    for (const auto &part : filePath) {
++        if (!result.empty() && result.back() != '/') {
++            result += '/';
++        }
++        result += part;
++    }
++    return result;
++#else
+     std::filesystem::path basePath = std::filesystem::path(path).lexically_normal();
+     std::filesystem::path filePath = (basePath / fileName).lexically_normal();
+
+@@ -414,6 +467,7 @@
+     }
+
+     return filePath.generic_string();
++#endif
+ }
+
+ //------------------------------------------------------------------------
+@@ -479,10 +533,40 @@
  {
      std::string dataRoot = !popplerDataDir.empty() ? popplerDataDir : std::string { POPPLER_DATADIR };
 
@@ -75,7 +138,7 @@
          }
      }
 
-@@ -480,9 +515,10 @@
+@@ -498,9 +582,10 @@
          addCMapDir(entry.path().filename().string(), entry.path().string());
          toUnicodeDirs.push_back(entry.path().string());
      }
@@ -89,7 +152,7 @@
  {
      char *tok1, *tok2;
      FILE *f;
-@@ -491,8 +527,8 @@
+@@ -509,8 +594,8 @@
      Unicode u;
      char *tokptr;
 
@@ -100,7 +163,7 @@
          return;
      }
      line = 1;
-@@ -503,7 +539,7 @@
+@@ -521,7 +606,7 @@
              sscanf(tok1, "%x", &u);
              nameToUnicodeText->add(tok2, u);
          } else {

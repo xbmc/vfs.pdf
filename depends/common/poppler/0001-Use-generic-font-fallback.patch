@@ -1,6 +1,6 @@
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -120,7 +120,7 @@
+@@ -125,7 +125,7 @@
  elseif(ANDROID)
    set(_default_fontconfiguration "android")
  else()
@@ -9,3 +9,69 @@
  endif()
  set(FONT_CONFIGURATION "${_default_fontconfiguration}" CACHE STRING "The font configuration backend (win32|android|generic|fontconfig).")
  string(TOLOWER "${FONT_CONFIGURATION}" font_configuration)
+--- a/poppler/GlobalParams.cc
++++ b/poppler/GlobalParams.cc
+@@ -67,6 +67,9 @@
+ #ifdef _WIN32
+ #    include <shlobj.h>
+ #    include <mbstring.h>
++#endif
++#ifdef __APPLE__
++#    include <TargetConditionals.h>
+ #endif
+ #ifdef ANDROID
+ #    include <android/font.h>
+@@ -1350,21 +1353,21 @@
+ {
+     const char *name;
+     const char *t1FileName;
+-    const char *ttFileName;
+-} displayFontTab[] = { { "Courier", "n022003l.pfb", "cour.ttf" },
+-                       { "Courier-Bold", "n022004l.pfb", "courbd.ttf" },
+-                       { "Courier-BoldOblique", "n022024l.pfb", "courbi.ttf" },
+-                       { "Courier-Oblique", "n022023l.pfb", "couri.ttf" },
+-                       { "Helvetica", "n019003l.pfb", "arial.ttf" },
+-                       { "Helvetica-Bold", "n019004l.pfb", "arialbd.ttf" },
+-                       { "Helvetica-BoldOblique", "n019024l.pfb", "arialbi.ttf" },
+-                       { "Helvetica-Oblique", "n019023l.pfb", "ariali.ttf" },
+-                       { "Symbol", "s050000l.pfb", nullptr },
+-                       { "Times-Bold", "n021004l.pfb", "timesbd.ttf" },
+-                       { "Times-BoldItalic", "n021024l.pfb", "timesbi.ttf" },
+-                       { "Times-Italic", "n021023l.pfb", "timesi.ttf" },
+-                       { "Times-Roman", "n021003l.pfb", "times.ttf" },
+-                       { "ZapfDingbats", "d050000l.pfb", nullptr },
++    const char *macFileName;
++} displayFontTab[] = { { "Courier", "n022003l.pfb", "Supplemental/Courier New.ttf" },
++                       { "Courier-Bold", "n022004l.pfb", "Supplemental/Courier New Bold.ttf" },
++                       { "Courier-BoldOblique", "n022024l.pfb", "Supplemental/Courier New Bold Italic.ttf" },
++                       { "Courier-Oblique", "n022023l.pfb", "Supplemental/Courier New Italic.ttf" },
++                       { "Helvetica", "n019003l.pfb", "Supplemental/Arial.ttf" },
++                       { "Helvetica-Bold", "n019004l.pfb", "Supplemental/Arial Bold.ttf" },
++                       { "Helvetica-BoldOblique", "n019024l.pfb", "Supplemental/Arial Bold Italic.ttf" },
++                       { "Helvetica-Oblique", "n019023l.pfb", "Supplemental/Arial Italic.ttf" },
++                       { "Symbol", "s050000l.pfb", "Symbol.ttf" },
++                       { "Times-Bold", "n021004l.pfb", "Supplemental/Times New Roman Bold.ttf" },
++                       { "Times-BoldItalic", "n021024l.pfb", "Supplemental/Times New Roman Bold Italic.ttf" },
++                       { "Times-Italic", "n021023l.pfb", "Supplemental/Times New Roman Italic.ttf" },
++                       { "Times-Roman", "n021003l.pfb", "Supplemental/Times New Roman.ttf" },
++                       { "ZapfDingbats", "d050000l.pfb", "ZapfDingbats.ttf" },
+                        { nullptr, nullptr, nullptr } };
+
+ static const char *displayFontDirs[] = { "/usr/share/ghostscript/fonts", "/usr/local/share/ghostscript/fonts", "/usr/share/fonts/default/Type1", "/usr/share/fonts/default/ghostscript", "/usr/share/fonts/type1/gsfonts", nullptr };
+@@ -1395,6 +1398,16 @@
+                 fileName.clear();
+             }
+         }
++#if defined(__APPLE__) && TARGET_OS_OSX
++        if (fileName.empty()) {
++            fileName = appendToPath("/System/Library/Fonts", displayFontTab[i].macFileName);
++            if ((f = openFile(fileName.c_str(), "rb"))) {
++                fclose(f);
++            } else {
++                fileName.clear();
++            }
++        }
++#endif
+         if (fileName.empty()) {
+             error(errConfig, -1, "No display font for '{0:s}'", displayFontTab[i].name);
+             continue;
